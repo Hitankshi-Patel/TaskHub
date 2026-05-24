@@ -178,8 +178,9 @@ export default function AdminDashboard() {
             <h1 style={{ fontSize: '32px', marginBottom: '8px' }}>Admin Ops Command</h1>
             <p style={{ color: 'var(--text-secondary)' }}>Manage product photography workflow, assign designers, and review generations.</p>
           </div>
-          <button onClick={loadAdminData} className="btn btn-secondary">
-            🔄 Refresh Analytics
+          <button onClick={loadAdminData} className="btn btn-secondary flex-center" style={{ gap: '6px' }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M23 4v6h-6"></path><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>
+            Refresh Analytics
           </button>
         </div>
 
@@ -245,10 +246,11 @@ export default function AdminDashboard() {
                       {task.status === 'submitted' && (
                         <button 
                           onClick={() => handleOpenReview(task)} 
-                          className="btn btn-primary"
-                          style={{ padding: '6px 12px', fontSize: '12px' }}
+                          className="btn btn-primary flex-center"
+                          style={{ padding: '6px 12px', fontSize: '12px', gap: '4px' }}
                         >
-                          👁️ Review Assets
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                          Review Assets
                         </button>
                       )}
                       <button 
@@ -408,19 +410,21 @@ export default function AdminDashboard() {
                 <div className="flex-between" style={{ gap: '16px' }}>
                   <button 
                     onClick={handleRejectSubmission} 
-                    className="btn btn-secondary"
-                    style={{ flex: 1, borderColor: 'var(--danger)', color: 'var(--danger)', padding: '12px' }}
+                    className="btn btn-secondary flex-center"
+                    style={{ flex: 1, borderColor: 'var(--danger)', color: 'var(--danger)', padding: '12px', gap: '6px', justifyContent: 'center' }}
                     disabled={submitting}
                   >
-                    ⚠️ Request Revision
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+                    Request Revision
                   </button>
                   <button 
                     onClick={handleAcceptSubmission} 
-                    className="btn btn-primary"
-                    style={{ flex: 1, background: 'linear-gradient(135deg, var(--success), #059669)', padding: '12px' }}
+                    className="btn btn-primary flex-center"
+                    style={{ flex: 1, background: 'linear-gradient(135deg, var(--success), #059669)', padding: '12px', gap: '6px', justifyContent: 'center' }}
                     disabled={submitting}
                   >
-                    ✓ Approve & Complete Task
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                    Approve & Complete Task
                   </button>
                 </div>
 

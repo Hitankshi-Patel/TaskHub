@@ -246,7 +246,7 @@ export default function AIStudio() {
           gap: '10px',
           animation: 'shimmer 2s infinite'
         }}>
-          <span>{toastMessage.type === 'success' ? '✓' : toastMessage.type === 'error' ? '❌' : 'ℹ️'}</span>
+          <span style={{ fontSize: '16px', fontWeight: 800 }}>{toastMessage.type === 'success' ? '✓' : toastMessage.type === 'error' ? '✕' : 'i'}</span>
           {toastMessage.text}
         </div>
       )}
@@ -506,9 +506,11 @@ export default function AIStudio() {
                 download="taskhub_image.png" 
                 target="_blank" 
                 rel="noopener noreferrer" 
-                className="btn btn-primary"
+                className="btn btn-primary flex-center"
+                style={{ display: 'inline-flex', gap: '8px', padding: '10px 20px' }}
               >
-                ⬇️ Download High-Res Asset
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                Download High-Res Asset
               </a>
             </div>
           </div>

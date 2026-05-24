@@ -73,8 +73,9 @@ export default function UserDashboard() {
               Manage your assigned product photography tasks and generate professional variations.
             </p>
           </div>
-          <button onClick={fetchMyTasks} className="btn btn-secondary">
-            🔄 Refresh Board
+          <button onClick={fetchMyTasks} className="btn btn-secondary flex-center" style={{ gap: '6px' }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M23 4v6h-6"></path><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>
+            Refresh Board
           </button>
         </div>
 
@@ -90,8 +91,10 @@ export default function UserDashboard() {
             <div className="skeleton-shimmer" style={{ height: '140px', borderRadius: 'var(--radius-md)' }}></div>
           </div>
         ) : tasks.length === 0 ? (
-          <div className="card" style={{ padding: '60px 20px', textAlign: 'center', backgroundColor: 'var(--bg-card)' }}>
-            <span style={{ fontSize: '48px', display: 'block', marginBottom: '16px' }}>☕</span>
+          <div className="card" style={{ padding: '60px 20px', textAlign: 'center', backgroundColor: 'var(--bg-card)', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+            <div style={{ color: 'var(--text-muted)', marginBottom: '16px' }}>
+              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+            </div>
             <h3>No tasks assigned yet</h3>
             <p style={{ color: 'var(--text-secondary)', maxWidth: '400px', margin: '8px auto 0' }}>
               Your administrator hasn't assigned any product photography tasks to your account yet. Check back later!
@@ -164,18 +167,20 @@ export default function UserDashboard() {
                   {task.status === 'assigned' || task.status === 'revision_requested' ? (
                     <button 
                       onClick={() => handleStartTask(task.id)} 
-                      className="btn btn-primary"
-                      style={{ width: '100%' }}
+                      className="btn btn-primary flex-center"
+                      style={{ width: '100%', gap: '8px' }}
                     >
-                      🚀 Start Studio Task
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+                      Start Studio Task
                     </button>
                   ) : (
                     <button 
                       onClick={() => router.push(`/tasks/${task.id}`)} 
-                      className="btn btn-primary"
-                      style={{ width: '100%', background: 'linear-gradient(135deg, var(--accent), #0f9f94)' }}
+                      className="btn btn-primary flex-center"
+                      style={{ width: '100%', gap: '8px', background: 'linear-gradient(135deg, var(--accent), #0f9f94)' }}
                     >
-                      🎨 Open AI Studio
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
+                      Open AI Studio
                     </button>
                   )}
                   <button 

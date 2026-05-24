@@ -90,7 +90,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     // Skip if we tried recently and failed (backend down cooldown)
     const now = Date.now();
-    if (lastSyncAttempt.current?.uid === uid && (now - lastSyncAttempt.current.ts) < SYNC_COOLDOWN_MS) {
+    if (lastSyncAttempt.current && lastSyncAttempt.current.uid === uid && (now - lastSyncAttempt.current.ts) < SYNC_COOLDOWN_MS) {
       return false;
     }
     lastSyncAttempt.current = { uid, ts: now };
