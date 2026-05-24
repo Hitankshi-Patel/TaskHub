@@ -144,7 +144,7 @@ def generate_background_scene(prompt, aspect_ratio="1:1"):
     
     client = genai.Client(api_key=gemini_key)
     response = client.models.generate_images(
-        model='imagen-3.0-generate-002',
+        model='imagen-3.0-generate-001',
         prompt=prompt,
         config=types.GenerateImagesConfig(
             number_of_images=1,
