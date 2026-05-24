@@ -172,41 +172,46 @@ def oauth_callback():
     """
     Client sends the Firebase idToken here to establish a session, return profile and sync.
     """
-    token_data = verify_firebase_token()
-    if not token_data:
-        # Fallback to post body if not in header
-        data = request.get_json() or {}
-        id_token = data.get("idToken")
-        if id_token and firebase_initialized:
-            try:
-                token_data = auth.verify_id_token(id_token)
-            except Exception as e:
-                return jsonify({"error": f"Invalid OAuth token: {str(e)}"}), 401
-        
-    if not token_data:
-        return jsonify({"error": "Unauthorized: Valid Firebase idToken required"}), 401
-        
-    uid = token_data["uid"]
-    email = token_data.get("email")
-    name = token_data.get("name", "")
-    
-    # Sync database user
-    user = User.query.get(uid)
-    if not user:
-        count = User.query.count()
-        role = "admin" if count == 0 else "user"
-        user = User(id=uid, email=email, full_name=name, role=role)
-        db.session.add(user)
-        db.session.commit()
-        
-        log = AuditLog(user_id=uid, action="user_registered", table_name="users", record_id=uid)
-        db.session.add(log)
-        db.session.commit()
-        
-    return jsonify({
-        "message": "Authentication successful",
-        "user": user.to_dict()
-    })
+    try:
+        token_data = verify_firebase_token()
+        if not token_data:
+            # Fallback to post body if not in header
+            data = request.get_json() or {}
+            id_token = data.get("idToken")
+            if id_token and firebase_initialized:
+                try:
+                    token_data = auth.verify_id_token(id_token)
+                except Exception as e:
+                    return jsonify({"error": f"Invalid OAuth token: {str(e)}"}), 401
+
+        if not token_data:
+            return jsonify({"error": "Unauthorized: Valid Firebase idToken required"}), 401
+
+        uid = token_data["uid"]
+        email = token_data.get("email")
+        name = token_data.get("name", "")
+
+        # Sync database user
+        user = User.query.get(uid)
+        if not user:
+            count = User.query.count()
+            role = "admin" if count == 0 else "user"
+            user = User(id=uid, email=email, full_name=name, role=role)
+            db.session.add(user)
+            db.session.commit()
+
+            log = AuditLog(user_id=uid, action="user_registered", table_name="users", record_id=uid)
+            db.session.add(log)
+            db.session.commit()
+
+        return jsonify({
+            "message": "Authentication successful",
+            "user": user.to_dict()
+        })
+    except Exception as e:
+        print(f"[oauth_callback] Unhandled error: {e}")
+        db.session.rollback()
+        return jsonify({"error": "Internal server error during authentication"}), 500
 
 @app.route("/api/auth/me", methods=["GET"])
 @login_required
