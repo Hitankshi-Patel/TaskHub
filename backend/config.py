@@ -38,3 +38,6 @@ class Config:
 
     # Gemini API Key for Image Generation
     GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
+
+    # Firebase Service Account JSON (as a raw string) for production/Vercel
+    FIREBASE_SERVICE_ACCOUNT_JSON = os.environ.get("FIREBASE_SERVICE_ACCOUNT_JSON")

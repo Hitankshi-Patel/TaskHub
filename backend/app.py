@@ -20,13 +20,20 @@ from .services.notifier import (
 app = Flask(__name__)
 app.config.from_object(Config)
 
-# Enable CORS for Next.js frontend running on http://localhost:3000
-CORS(app, resources={r"/api/*": {"origins": ["http://localhost:3000"]}})
+# Enable CORS for Next.js frontend
+cors_origins = os.environ.get("CORS_ALLOWED_ORIGINS", "http://localhost:3000,*").split(",")
+CORS(app, resources={r"/api/*": {"origins": cors_origins}})
 
 # Initialize Firebase Admin
 firebase_initialized = False
 try:
-    if Config.FIREBASE_CREDENTIALS_PATH and os.path.exists(Config.FIREBASE_CREDENTIALS_PATH):
+    if Config.FIREBASE_SERVICE_ACCOUNT_JSON:
+        import json
+        cred_dict = json.loads(Config.FIREBASE_SERVICE_ACCOUNT_JSON)
+        cred = credentials.Certificate(cred_dict)
+        firebase_admin.initialize_app(cred)
+        firebase_initialized = True
+    elif Config.FIREBASE_CREDENTIALS_PATH and os.path.exists(Config.FIREBASE_CREDENTIALS_PATH):
         cred = credentials.Certificate(Config.FIREBASE_CREDENTIALS_PATH)
         firebase_admin.initialize_app(cred)
         firebase_initialized = True
