@@ -27,9 +27,9 @@ from services.notifier import (
 app = Flask(__name__)
 app.config.from_object(Config)
 
-# Enable CORS for Next.js frontend
-cors_origins = os.environ.get("CORS_ALLOWED_ORIGINS", "http://localhost:3000,*").split(",")
-CORS(app, resources={r"/api/*": {"origins": cors_origins}})
+# Allow all origins — Vercel serverless functions are stateless and auth is
+# handled by Firebase tokens, so CORS restrictions add no security here.
+CORS(app, resources={r"/api/*": {"origins": "*"}})
 
 # Initialize Firebase Admin
 firebase_initialized = False
@@ -72,13 +72,11 @@ limiter = Limiter(
     storage_uri="memory://"
 )
 
-# Create tables in DB (for production SQLite fallback / Postgres initialization)
-with app.app_context():
-    try:
-        db.create_all()
-        print("Database tables validated/created.")
-    except Exception as e:
-        print(f"Warning: Database connection failed during startup: {e}")
+# Skip eager DB connection at module load time — on Vercel, the serverless
+# function module is imported before a request context exists. An eager
+# db.create_all() call can hang the cold start if Supabase is slow.
+# Tables are created on the first real request via the health endpoint instead.
+print("Flask app initialized. DB tables will be verified on first request.")
 
 # Helper to verify auth token
 def verify_firebase_token():
@@ -670,10 +668,23 @@ def get_analytics():
 
 @app.route("/api/health", methods=["GET"])
 def health_check():
+    db_status = "disconnected"
+    try:
+        # Run a minimal query to validate the live connection
+        db.session.execute(db.text("SELECT 1"))
+        db.session.commit()
+        # Ensure tables exist (safe to call repeatedly — no-ops if already present)
+        db.create_all()
+        db_status = "connected"
+    except Exception as e:
+        print(f"[health_check] DB error: {e}")
+        db.session.rollback()
+        db_status = f"error: {str(e)}"
+
     return jsonify({
-        "status": "healthy",
+        "status": "healthy" if db_status == "connected" else "degraded",
         "firebase_auth": firebase_initialized,
-        "database": "connected"
+        "database": db_status
     })
 
 # ----------------- MAIN RUNNER -----------------

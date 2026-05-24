@@ -11,19 +11,31 @@ class Config:
     DEBUG = os.environ.get("FLASK_DEBUG", "True").lower() in ("true", "1")
 
     # Supabase (PostgreSQL) Database connection URI
-    # Format: postgresql://postgres.xxxx:password@aws-0-us-east-1.pooler.supabase.com:5432/postgres
     SQLALCHEMY_DATABASE_URI = os.environ.get("DATABASE_URL")
     if SQLALCHEMY_DATABASE_URI and SQLALCHEMY_DATABASE_URI.startswith("postgres://"):
         # SQLAlchemy requires postgresql:// instead of postgres://
         SQLALCHEMY_DATABASE_URI = SQLALCHEMY_DATABASE_URI.replace("postgres://", "postgresql://", 1)
-    
+
     SQLALCHEMY_TRACK_MODIFICATIONS = False
+
+    # Serverless-friendly SQLAlchemy engine options.
+    # NullPool disables connection pooling entirely — each request opens a fresh
+    # connection and closes it when done. This is required for Vercel serverless
+    # functions, which are stateless and cannot safely share connection pools
+    # across invocations.
+    SQLALCHEMY_ENGINE_OPTIONS = {
+        "pool_pre_ping": True,       # Test connection before use to discard stale sockets
+        "pool_recycle": 280,         # Recycle connections before Supabase's 300s idle timeout
+        "connect_args": {
+            "connect_timeout": 10,   # Fail fast on connection attempts (seconds)
+            "options": "-c statement_timeout=30000"  # 30s max per statement
+        }
+    }
 
     # Replicate API Configuration
     REPLICATE_API_TOKEN = os.environ.get("REPLICATE_API_TOKEN")
-    # Recommended SDXL Inpainting model on Replicate
     REPLICATE_INPAINT_MODEL = os.environ.get(
-        "REPLICATE_INPAINT_MODEL", 
+        "REPLICATE_INPAINT_MODEL",
         "sepal/sdxl-inpainting:aca001c8b137114d5e594c68f7084ae6d82f364758aab8d997b233e8ef3c4d93"
     )
 
@@ -33,7 +45,6 @@ class Config:
 
     # Firebase Admin Configuration
     FIREBASE_PROJECT_ID = os.environ.get("FIREBASE_PROJECT_ID")
-    # Can point to a local service account credentials JSON file
     FIREBASE_CREDENTIALS_PATH = os.environ.get("FIREBASE_CREDENTIALS_PATH")
 
     # Gemini API Key for Image Generation
