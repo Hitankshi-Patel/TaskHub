@@ -1,6 +1,6 @@
 import os
 import resend
-from ..config import Config
+from config import Config
 
 # Initialize Resend
 if Config.RESEND_API_KEY:

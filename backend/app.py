@@ -1,4 +1,11 @@
 import os
+import sys
+
+# Ensure the backend directory is in the path for standalone Vercel deployments and local execution
+backend_dir = os.path.dirname(os.path.abspath(__file__))
+if backend_dir not in sys.path:
+    sys.path.insert(0, backend_dir)
+
 from flask import Flask, request, jsonify, g
 from flask_cors import CORS
 from flask_limiter import Limiter
@@ -6,10 +13,10 @@ from flask_limiter.util import get_remote_address
 import firebase_admin
 from firebase_admin import credentials, auth
 
-from .config import Config
-from .models import db, User, Task, GeneratedImage, AuditLog
-from .worker import init_worker, start_background_job, generate_task_image_job, get_job_status
-from .services.notifier import (
+from config import Config
+from models import db, User, Task, GeneratedImage, AuditLog
+from worker import init_worker, start_background_job, generate_task_image_job, get_job_status
+from services.notifier import (
     notify_task_assigned,
     notify_task_submitted,
     notify_task_accepted,

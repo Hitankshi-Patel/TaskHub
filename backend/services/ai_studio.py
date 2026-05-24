@@ -6,7 +6,7 @@ from PIL import Image
 import replicate
 from google import genai
 from google.genai import types
-from ..config import Config
+from config import Config
 
 def save_local_file(file_bytes, file_name):
     """

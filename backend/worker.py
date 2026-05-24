@@ -1,9 +1,17 @@
 import time
 import uuid
+import os
+import sys
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor
 from flask import current_app
-from .models import db, GeneratedImage, Task, AuditLog
+
+# Ensure the backend directory is in the path for standalone Vercel deployments and local execution
+backend_dir = os.path.dirname(os.path.abspath(__file__))
+if backend_dir not in sys.path:
+    sys.path.insert(0, backend_dir)
+
+from models import db, GeneratedImage, Task, AuditLog
 
 # Global job dictionary
 # Structure: { job_id: { "status": "pending"|"running"|"completed"|"failed", "result": data, "error": msg, "progress": int } }
@@ -79,7 +87,7 @@ def generate_task_image_job(job_id, task_id, image_type, angle=None):
     4. Resizes and overlays the product on the generated background using PIL.
     5. Saves composite image to database and storage.
     """
-    from .services.ai_studio import (
+    from services.ai_studio import (
         extract_product_background,
         upload_to_storage,
         get_generation_prompts,
