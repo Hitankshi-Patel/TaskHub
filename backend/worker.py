@@ -74,18 +74,18 @@ def generate_task_image_job(job_id, task_id, image_type, angle=None):
     """
     Background job that:
     1. Downloads original product image.
-    2. Runs background removal.
-    3. Uploads transparent product and mask to Storage.
-    4. Constructs prompts.
-    5. Calls Replicate SDXL inpainting.
-    6. Saves new image URL to database.
+    2. Runs background removal (via Replicate API or locally).
+    3. Generates environment background via Google Gemini Imagen.
+    4. Resizes and overlays the product on the generated background using PIL.
+    5. Saves composite image to database and storage.
     """
     from .services.ai_studio import (
         extract_product_background,
-        prepare_inpainting_assets,
         upload_to_storage,
         get_generation_prompts,
-        generate_inpaint_image
+        generate_background_scene,
+        prepare_product_overlay,
+        composite_product_on_background
     )
     import requests
     
@@ -103,39 +103,79 @@ def generate_task_image_job(job_id, task_id, image_type, angle=None):
     
     original_bytes = response.content
     
-    # 3. Extract background (rembg downloads ~176MB u2net model on first run — this is normal)
+    # 3. Extract background
     JOBS[job_id]["progress"] = 35
-    print(f"[Job {job_id[:8]}] Step 3/7: Running background removal (rembg)... (first run downloads u2net model ~176MB)")
+    print(f"[Job {job_id[:8]}] Step 3/7: Running background removal...")
     transparent_bytes = extract_product_background(original_bytes)
     print(f"[Job {job_id[:8]}] Step 3/7: Background removal complete.")
     
-    # 4. Prepare inpainting (base image + mask)
-    JOBS[job_id]["progress"] = 50
-    print(f"[Job {job_id[:8]}] Step 4/7: Preparing inpainting mask...")
-    base_bytes, mask_bytes = prepare_inpainting_assets(transparent_bytes)
-    print(f"[Job {job_id[:8]}] Step 4/7: Mask ready.")
+    # 4. Generate environment background using Gemini Imagen
+    JOBS[job_id]["progress"] = 55
+    prompts = get_generation_prompts(task.title, task.description, image_type, angle)
+    print(f"[Job {job_id[:8]}] Step 4/7: Generating background with Imagen...")
+    background_bytes = generate_background_scene(prompts["prompt"])
+    print(f"[Job {job_id[:8]}] Step 4/7: Background scene ready.")
     
-    # 5. Upload assets to Storage
-    rand_suffix = str(uuid.uuid4())[:8]
-    print(f"[Job {job_id[:8]}] Step 5/7: Uploading base + mask to Supabase Storage...")
-    base_url = upload_to_storage(base_bytes, f"{task_id}/base_{image_type}_{rand_suffix}.png")
-    mask_url = upload_to_storage(mask_bytes, f"{task_id}/mask_{image_type}_{rand_suffix}.png")
-    print(f"[Job {job_id[:8]}] Step 5/7: Assets uploaded.")
-    JOBS[job_id]["progress"] = 70
+    # 5. Composite product on background
+    JOBS[job_id]["progress"] = 75
+    print(f"[Job {job_id[:8]}] Step 5/7: Compositing product on environment...")
     
-    # 6. Generate prompts
-    prompts = get_generation_prompts(task.description, image_type, angle)
+    # Determine model/environment scaling & offset configurations based on product type
+    title_lower = (task.title or "").lower()
+    category = "general"
+    if "ring" in title_lower or "band" in title_lower:
+        category = "ring"
+    elif "earring" in title_lower or "stud" in title_lower:
+        category = "earring"
+    elif "necklace" in title_lower or "pendant" in title_lower or "chain" in title_lower:
+        category = "necklace"
+    elif "bracelet" in title_lower or "bangle" in title_lower or "watch" in title_lower:
+        category = "bracelet"
+        
+    scale_factor = 0.55
+    offset = (0, 0)
+    add_reflection = False
+    add_shadow = True
     
-    # 7. Run Replicate Inpainting
-    JOBS[job_id]["progress"] = 80
-    generated_url = generate_inpaint_image(
-        base_url=base_url,
-        mask_url=mask_url,
-        prompt=prompts["prompt"],
-        negative_prompt=prompts["negative_prompt"]
+    if image_type == "theme_1":
+        add_reflection = True
+        
+    if image_type.startswith("model_"):
+        if category == "necklace":
+            scale_factor = 0.35
+            offset = (0, 100)
+        elif category == "ring":
+            scale_factor = 0.22
+            offset = (0, 0)
+        elif category == "earring":
+            scale_factor = 0.20
+            offset = (50, 50)
+        else:
+            scale_factor = 0.30
+            offset = (0, 0)
+            
+    product_canvas = prepare_product_overlay(
+        transparent_png_bytes=transparent_bytes,
+        target_size=(1024, 1024),
+        scale_factor=scale_factor,
+        position_offset=offset
     )
     
-    # 8. Save to DB
+    composite_bytes = composite_product_on_background(
+        background_bytes=background_bytes,
+        product_canvas_img=product_canvas,
+        add_shadow=add_shadow,
+        add_reflection=add_reflection
+    )
+    
+    # 6. Upload final composite image
+    JOBS[job_id]["progress"] = 85
+    print(f"[Job {job_id[:8]}] Step 6/7: Uploading composite to Storage...")
+    rand_suffix = str(uuid.uuid4())[:8]
+    generated_url = upload_to_storage(composite_bytes, f"{task_id}/composite_{image_type}_{rand_suffix}.jpg")
+    print(f"[Job {job_id[:8]}] Step 6/7: Composite uploaded.")
+    
+    # 7. Save to DB
     JOBS[job_id]["progress"] = 90
     gen_img = GeneratedImage(
         task_id=task_id,
@@ -145,9 +185,10 @@ def generate_task_image_job(job_id, task_id, image_type, angle=None):
         angle=angle,
         meta_data={
             "job_id": job_id,
-            "replicate_model": current_app.config.get("REPLICATE_INPAINT_MODEL"),
-            "base_url": base_url,
-            "mask_url": mask_url
+            "generation_model": "imagen-3.0-generate-002",
+            "category_detected": category,
+            "scale_factor": scale_factor,
+            "offset": offset
         }
     )
     db.session.add(gen_img)

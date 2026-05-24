@@ -35,3 +35,6 @@ class Config:
     FIREBASE_PROJECT_ID = os.environ.get("FIREBASE_PROJECT_ID")
     # Can point to a local service account credentials JSON file
     FIREBASE_CREDENTIALS_PATH = os.environ.get("FIREBASE_CREDENTIALS_PATH")
+
+    # Gemini API Key for Image Generation
+    GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
