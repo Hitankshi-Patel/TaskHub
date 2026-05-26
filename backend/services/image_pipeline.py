@@ -59,9 +59,15 @@ def extract_with_rembg(image_bytes: bytes) -> bytes:
         import onnxruntime as ort
 
         # ---- download / locate the U2Net ONNX model ----
+        # Use /tmp on read-only filesystems (e.g. Vercel), fall back to ~/.u2net
         import os, hashlib, urllib.request
-        cache_dir = os.path.join(os.path.expanduser("~"), ".u2net")
-        os.makedirs(cache_dir, exist_ok=True)
+        _home_cache = os.path.join(os.path.expanduser("~"), ".u2net")
+        try:
+            os.makedirs(_home_cache, exist_ok=True)
+            cache_dir = _home_cache
+        except OSError:
+            cache_dir = "/tmp/.u2net"
+            os.makedirs(cache_dir, exist_ok=True)
         model_path = os.path.join(cache_dir, "u2net.onnx")
 
         if not os.path.exists(model_path):
@@ -153,10 +159,9 @@ def get_or_create_rembg_cache(task, original_bytes: bytes) -> bytes:
     # Run rembg
     transparent_bytes = extract_with_rembg(original_bytes)
 
-    # Persist to disk in static/uploads/rembg_cache/
-    cache_dir = os.path.join(
-        os.path.dirname(os.path.dirname(__file__)), "static", "uploads", "rembg_cache"
-    )
+    # Persist to /tmp/rembg_cache — the only writable dir on Vercel (read-only FS).
+    # On a normal server this is still fine; files survive until the process restarts.
+    cache_dir = "/tmp/rembg_cache"
     os.makedirs(cache_dir, exist_ok=True)
     cache_path = os.path.join(cache_dir, f"{task.id}.png")
 
