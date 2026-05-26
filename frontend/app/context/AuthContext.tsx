@@ -75,6 +75,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setToken(null);
     localStorage.removeItem('taskhub_token');
     localStorage.removeItem('taskhub_mock_role');
+    // Reset cooldown so login can be reattempted immediately after a failure/logout
+    lastSyncAttempt.current = null;
+  }, []);
+
+  // Gets a fresh ID token, retrying with forceRefresh if the first token's iat
+  // is behind the server clock ("Token used too early" clock-skew error).
+  const getIdTokenWithRetry = useCallback(async (firebaseUser: FirebaseUser): Promise<string> => {
+    // Always force-refresh so the token's iat is as current as possible.
+    // This is the primary defence against clock-skew on first login.
+    try {
+      return await firebaseUser.getIdToken(/* forceRefresh */ true);
+    } catch {
+      // forceRefresh failed (network blip) — fall back to cached token
+      return await firebaseUser.getIdToken(false);
+    }
   }, []);
 
   // Sync Firebase/mock token to Flask backend and retrieve the stored user profile
@@ -159,7 +174,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       async (firebaseUser: FirebaseUser | null) => {
         if (firebaseUser) {
           try {
-            const idToken = await firebaseUser.getIdToken();
+            // Force-refresh the token so its iat is current — eliminates clock-skew
+            // errors that happen when Firebase fires onAuthStateChanged immediately
+            // after sign-in with a token whose iat is marginally in the future.
+            const idToken = await getIdTokenWithRetry(firebaseUser);
             await syncWithBackend(idToken);
           } catch (err) {
             console.error('[TaskHub] Failed to get ID token:', err);
@@ -183,7 +201,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     );
 
     return () => unsubscribe();
-  }, [syncWithBackend, clearLocalSession]);
+  }, [syncWithBackend, clearLocalSession, getIdTokenWithRetry]);
 
   const loginWithGoogle = async () => {
     if (!isFirebaseConfigured || !auth) {
@@ -192,13 +210,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
     setLoading(true);
     setAuthError(null);
+    // Reset cooldown — explicit logins must always reach the backend,
+    // even if a previous attempt failed within the last 10 seconds.
+    lastSyncAttempt.current = null;
     try {
       const result = await signInWithPopup(auth, googleProvider);
-      const idToken = await result.user.getIdToken();
-      await syncWithBackend(idToken);
+      // Force-refresh so iat is current — prevents "Token used too early" on brand-new sessions
+      const idToken = await getIdTokenWithRetry(result.user);
+      const ok = await syncWithBackend(idToken);
+      if (!ok) throw new Error('Backend sync failed. Please try again.');
     } catch (err: unknown) {
       const code = (err as { code?: string })?.code ?? '';
-      setAuthError(getFirebaseErrorMessage(code));
+      setAuthError(
+        code ? getFirebaseErrorMessage(code)
+             : (err instanceof Error ? err.message : 'Sign-in failed. Please try again.')
+      );
     } finally {
       setLoading(false);
     }
@@ -211,13 +237,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
     setLoading(true);
     setAuthError(null);
+    // Reset cooldown — explicit logins must always reach the backend
+    lastSyncAttempt.current = null;
     try {
       const result = await signInWithPopup(auth, githubProvider);
-      const idToken = await result.user.getIdToken();
-      await syncWithBackend(idToken);
+      // Force-refresh so iat is current — prevents "Token used too early" on brand-new sessions
+      const idToken = await getIdTokenWithRetry(result.user);
+      const ok = await syncWithBackend(idToken);
+      if (!ok) throw new Error('Backend sync failed. Please try again.');
     } catch (err: unknown) {
       const code = (err as { code?: string })?.code ?? '';
-      setAuthError(getFirebaseErrorMessage(code));
+      setAuthError(
+        code ? getFirebaseErrorMessage(code)
+             : (err instanceof Error ? err.message : 'Sign-in failed. Please try again.')
+      );
     } finally {
       setLoading(false);
     }
@@ -226,6 +259,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const loginMock = async (role: 'admin' | 'user') => {
     setLoading(true);
     setAuthError(null);
+    // Reset cooldown — mock login must always reach the backend
+    lastSyncAttempt.current = null;
     try {
       const mockToken = `mock-token-${role}-${Date.now()}`;
       await syncWithBackend(mockToken, role);

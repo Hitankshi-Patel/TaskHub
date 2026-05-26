@@ -213,10 +213,27 @@ export default function AIStudio() {
     return getSlotImage(slot.type) ? count + 1 : count;
   }, 0);
 
-  if (loading || !user || !task) {
+  if (loading || !user) {
     return (
       <div className="flex-center" style={{ minHeight: '100vh', backgroundColor: 'var(--bg-app)' }}>
         <p style={{ fontWeight: 600, color: 'var(--text-secondary)' }}>Loading AI photography studio...</p>
+      </div>
+    );
+  }
+
+  if (!task && !fetching) {
+    return (
+      <div className="flex-center" style={{ minHeight: '100vh', backgroundColor: 'var(--bg-app)', flexDirection: 'column', gap: '16px' }}>
+        <p style={{ fontWeight: 600, color: 'var(--danger)' }}>{error || 'Failed to load task.'}</p>
+        <button className="btn btn-secondary" onClick={fetchTaskAndGens}>Retry</button>
+      </div>
+    );
+  }
+
+  if (!task) {
+    return (
+      <div className="flex-center" style={{ minHeight: '100vh', backgroundColor: 'var(--bg-app)' }}>
+        <p style={{ fontWeight: 600, color: 'var(--text-secondary)' }}>Loading task...</p>
       </div>
     );
   }
@@ -371,7 +388,7 @@ export default function AIStudio() {
                         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M12 6v6l4 2"></path></svg>
                       </div>
                       <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--primary)' }}>
-                        {activeJob.status === 'pending' ? 'Queuing Replicate Job...' : `Generating: ${activeJob.progress}%`}
+                        {activeJob.status === 'pending' ? 'Queuing Generation Job...' : `Generating: ${activeJob.progress}%`}
                       </span>
                       <div style={{ width: '100%', height: '6px', backgroundColor: 'var(--border-color)', borderRadius: '3px', overflow: 'hidden' }}>
                         <div style={{ width: `${activeJob.progress}%`, height: '100%', backgroundColor: 'var(--primary)', transition: 'width 0.25s' }}></div>
