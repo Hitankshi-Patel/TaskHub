@@ -1,23 +1,3 @@
-"""
-worker.py
-=========
-Background job runner for TaskHub image generation.
-
-Image type → pipeline strategy:
-  white_background  → build_white_background()      (pure Pillow, zero API)
-  theme_1           → Unsplash "white marble..."     + build_static_composite()
-  theme_2           → Unsplash "dark navy velvet..." + build_static_composite()
-  creative_1        → Unsplash "golden hour beach..."+ build_static_composite(blur_bg=True)
-  creative_2        → Unsplash "rose garden bokeh..."+ build_static_composite(blur_bg=True)
-  model_front / model_side / model_close
-                    → Google Gemini 3.1 Flash Image (ModelImageGenerator)
-                      All three model images are generated in one job call;
-                      individual model_ jobs are no-ops if already generated.
-
-Foundation for all 8: rembg local ONNX background removal, result cached to disk
-and path stored on Task.rembg_cache_path.
-"""
-
 import time
 import uuid
 import os
@@ -27,21 +7,15 @@ from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor
 from flask import current_app
 
-# Ensure the backend directory is on the path for standalone / Vercel execution
 backend_dir = os.path.dirname(os.path.abspath(__file__))
 if backend_dir not in sys.path:
     sys.path.insert(0, backend_dir)
 
 from models import db, GeneratedImage, Task, AuditLog
 
-# ---------------------------------------------------------------------------
-# Global job registry
-# Structure: { job_id: { status, result, error, progress, created_at } }
-# ---------------------------------------------------------------------------
 JOBS: dict = {}
-
 executor = ThreadPoolExecutor(max_workers=5)
-app_ref = None  # Set by init_worker()
+app_ref = None
 
 
 def init_worker(app):
@@ -89,9 +63,6 @@ def start_background_job(job_func, *args, **kwargs) -> str:
     return job_id
 
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
 
 def _download_product_image(url: str) -> bytes:
     resp = requests.get(url, timeout=20)
@@ -113,23 +84,8 @@ def _detect_category(task_title: str) -> str:
     return "general"
 
 
-# ---------------------------------------------------------------------------
-# Main generation job
-# ---------------------------------------------------------------------------
-
 def generate_task_image_job(job_id: str, task_id: str,
                              image_type: str, angle: str | None = None):
-    """
-    Background job that generates one of the 8 product images for *task_id*.
-
-    Progress milestones (stored in JOBS[job_id]["progress"]):
-      10  — job started
-      25  — product image downloaded
-      45  — rembg extraction complete (or cache hit)
-      70  — image generation / compositing complete
-      85  — upload complete
-      100 — DB record written, done
-    """
     from services.image_pipeline import (
         get_or_create_rembg_cache,
         build_white_background,
@@ -139,39 +95,33 @@ def generate_task_image_job(job_id: str, task_id: str,
     )
     from services.ai_studio import upload_to_storage
 
-    # ---- 1. Fetch task ----
     task = Task.query.get(task_id)
     if not task:
         raise ValueError(f"Task {task_id} not found.")
 
-    # ---- 2. Download product image ----
     JOBS[job_id]["progress"] = 25
     print(f"[Job {job_id[:8]}] Downloading product image...")
     original_bytes = _download_product_image(task.product_image_url)
-    print(f"[Job {job_id[:8]}] Product image downloaded ({len(original_bytes)} bytes).")
+    print(f"[Job {job_id[:8]}] Downloaded ({len(original_bytes)} bytes).")
 
-    # ---- 3. rembg background removal (cached per task) ----
     JOBS[job_id]["progress"] = 35
-    print(f"[Job {job_id[:8]}] Extracting product with rembg...")
+    print(f"[Job {job_id[:8]}] Running rembg...")
     transparent_bytes = get_or_create_rembg_cache(task, original_bytes)
     JOBS[job_id]["progress"] = 45
     print(f"[Job {job_id[:8]}] Transparent PNG ready ({len(transparent_bytes)} bytes).")
 
-    # ---- 4. Generate / composite the image ----
     JOBS[job_id]["progress"] = 50
     composite_bytes: bytes
     prompt_used: str
     model_used: str
 
     if image_type == "white_background":
-        # Pure Pillow — zero external calls
-        print(f"[Job {job_id[:8]}] Building white background composite...")
+        print(f"[Job {job_id[:8]}] Building white background...")
         composite_bytes = build_white_background(transparent_bytes)
-        prompt_used = "white #FFFFFF canvas — pure Pillow composite"
+        prompt_used = "white #FFFFFF canvas"
         model_used = "pillow"
 
     elif image_type in ("theme_1", "theme_2", "creative_1", "creative_2"):
-        # Unsplash real photo + Pillow composite
         query = UNSPLASH_QUERIES[image_type]
         blur_bg = image_type in ("creative_1", "creative_2")
         print(f"[Job {job_id[:8]}] Fetching Unsplash background: '{query}'...")
@@ -184,14 +134,10 @@ def generate_task_image_job(job_id: str, task_id: str,
         model_used = "unsplash+pillow"
 
     elif image_type in ("model_front", "model_side", "model_close"):
-        # Google Gemini 3.1 Flash Image — generate all three model images in one call
         from services.model_image_generator import ModelImageGenerator
 
         jewelry_desc = getattr(task, "description", None) or ""
-        print(
-            f"[Job {job_id[:8]}] Generating all 3 model images via Gemini "
-            f"(task: {task_id}, jewelry: {jewelry_desc[:60] or 'fallback'}...)..."
-        )
+        print(f"[Job {job_id[:8]}] Generating model images via Gemini...")
         gen = ModelImageGenerator()
         model_images = gen.generate_all_three(
             task_id=task_id,
@@ -199,8 +145,6 @@ def generate_task_image_job(job_id: str, task_id: str,
             product_image_bytes=original_bytes,
         )
 
-        # model_images = {"front": bytes, "side": bytes, "closeup": bytes}
-        # Upload each angle and write a DB record for it.
         JOBS[job_id]["progress"] = 70
         angle_map = {
             "front":   "model_front",
@@ -248,9 +192,8 @@ def generate_task_image_job(job_id: str, task_id: str,
 
         db.session.commit()
         JOBS[job_id]["progress"] = 100
-        print(f"[Job {job_id[:8]}] All 3 model images generated and saved for task {task_id}.")
-        # Return the record for the angle that was originally requested
-        requested_angle = image_type.replace("model_", "")  # front / side / close
+        print(f"[Job {job_id[:8]}] All 3 model images saved for task {task_id}.")
+        requested_angle = image_type.replace("model_", "")
         if requested_angle == "close":
             requested_angle = "closeup"
         return {
@@ -265,17 +208,14 @@ def generate_task_image_job(job_id: str, task_id: str,
     JOBS[job_id]["progress"] = 70
     print(f"[Job {job_id[:8]}] Image generation complete.")
 
-    # ---- 5. Upload to storage ----
     JOBS[job_id]["progress"] = 75
     rand_suffix = str(uuid.uuid4())[:8]
     storage_path = f"{task_id}/composite_{image_type}_{rand_suffix}.jpg"
-    print(f"[Job {job_id[:8]}] Uploading to storage: {storage_path}")
+    print(f"[Job {job_id[:8]}] Uploading to {storage_path}")
     generated_url = upload_to_storage(composite_bytes, storage_path)
     JOBS[job_id]["progress"] = 85
     print(f"[Job {job_id[:8]}] Uploaded: {generated_url}")
 
-    # ---- 6. Persist to DB ----
-    # Pre-generate the ID so it's available for the AuditLog before the flush.
     new_img_id = str(uuid.uuid4())
     gen_img = GeneratedImage(
         id=new_img_id,

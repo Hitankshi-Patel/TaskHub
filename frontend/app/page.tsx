@@ -1,8 +1,9 @@
 "use client";
 
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { useAuth } from './context/AuthContext';
 import { useRouter } from 'next/navigation';
+
 
 const CheckIcon = () => (
   <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ color: '#3b82f6' }}>
@@ -30,15 +31,22 @@ export default function Home() {
   const { user, loading, loginWithGoogle, loginWithGitHub, authError, clearError } = useAuth();
   const router = useRouter();
 
+  // Ref prevents double-redirects when React re-renders between the
+  // navigation being scheduled and the component unmounting.
+  const redirected = useRef(false);
+
   useEffect(() => {
-    if (!loading && user) {
+    if (!loading && user && !redirected.current) {
+      redirected.current = true;
       if (user.role === 'admin') {
-        router.push('/admin');
+        router.replace('/admin');
       } else {
-        router.push('/dashboard');
+        router.replace('/dashboard');
       }
     }
-  }, [user, loading, router]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, loading]);
+
 
   if (loading) {
     return (

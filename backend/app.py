@@ -156,7 +156,6 @@ def admin_required(f):
     return decorated
 
 
-# ----------------- AUTH -----------------
 
 @app.route("/api/auth/oauth/callback", methods=["POST"])
 def oauth_callback():
@@ -229,7 +228,6 @@ def auth_logout():
     return jsonify({"message": "Logged out successfully"})
 
 
-# ----------------- ADMIN TASKS -----------------
 
 @app.route("/api/tasks", methods=["POST"])
 @admin_required
@@ -436,7 +434,6 @@ def delete_task(id):
     return jsonify({"message": "Task deleted successfully"})
 
 
-# ----------------- USER TASKS -----------------
 
 @app.route("/api/my-tasks", methods=["GET"])
 @login_required
@@ -522,7 +519,6 @@ def submit_task(id):
     return jsonify(task.to_dict())
 
 
-# ----------------- IMAGE GENERATION -----------------
 
 @app.route("/api/tasks/<id>/generate", methods=["POST"])
 @login_required
@@ -597,7 +593,6 @@ def delete_generation(id):
     return jsonify({"message": "Generated image deleted successfully"})
 
 
-# ----------------- ANALYTICS -----------------
 
 @app.route("/api/admin/analytics", methods=["GET"])
 @admin_required

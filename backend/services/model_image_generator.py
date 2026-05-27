@@ -1,26 +1,3 @@
-"""
-model_image_generator.py
-========================
-Generates Images 6, 7, and 8 (model-wearing-jewelry) for TaskHub tasks using
-Google Gemini 3.1 Flash Image (Nano Banana 2).
-
-Uses the current ``google-genai`` SDK (``from google import genai``).
-
-Consistency strategy (Gemini has no seed parameter):
-  - Image 6 (front view)  : generated from text prompt + product image → becomes "anchor"
-  - Image 7 (side view)   : anchor image passed as inline reference alongside prompt
-  - Image 8 (close-up)    : anchor image passed as inline reference alongside prompt
-
-Each generated image is saved to Supabase Storage under:
-  tasks/{task_id}/model_{angle}.png
-
-Usage:
-    from services.model_image_generator import ModelImageGenerator
-    gen = ModelImageGenerator()
-    result = gen.generate_all_three(task_id, jewelry_description, product_image_bytes)
-    # result == {"front": <bytes>, "side": <bytes>, "closeup": <bytes>}
-"""
-
 from __future__ import annotations
 
 import base64
@@ -35,10 +12,6 @@ from PIL import Image
 from config import Config
 
 
-# ---------------------------------------------------------------------------
-# Constants
-# ---------------------------------------------------------------------------
-
 FALLBACK_JEWELRY_DESCRIPTION = (
     "a multi-strand pearl necklace featuring five strands of cream-white 8mm "
     "freshwater pearls, secured with an ornate 22-karat gold box clasp featuring "
@@ -47,15 +20,9 @@ FALLBACK_JEWELRY_DESCRIPTION = (
     "soft rose-pink overtone and high lustre with visible surface texture"
 )
 
-# Free tier limit: 2 images per minute → wait 35 s between calls
 _FREE_TIER_SLEEP_SECONDS = 35
-
 _GEMINI_MODEL = "gemini-3.1-flash-image-preview"
 
-
-# ---------------------------------------------------------------------------
-# Prompt factory functions (jewelry_description injected at call time)
-# ---------------------------------------------------------------------------
 
 def get_front_view_prompt(jewelry_description: str) -> str:
     return (
@@ -164,30 +131,14 @@ def get_closeup_prompt(jewelry_description: str) -> str:
     )
 
 
-# ---------------------------------------------------------------------------
-# Main service class
-# ---------------------------------------------------------------------------
-
 class ModelImageGenerator:
-    """
-    Generates the three model-wearing-jewelry images (front, side, closeup)
-    for a TaskHub task using Google Gemini 3.1 Flash Image.
-
-    Instantiation configures the genai Client using GEMINI_API_KEY from env.
-    """
-
     def __init__(self) -> None:
         api_key = os.environ.get("GEMINI_API_KEY") or Config.GEMINI_API_KEY
         if not api_key:
             raise ValueError(
-                "GEMINI_API_KEY is not configured. "
-                "Add it to your .env file (get a free key at https://aistudio.google.com)."
+                "GEMINI_API_KEY is not set. Get a free key at https://aistudio.google.com."
             )
         self._client = genai.Client(api_key=api_key)
-
-    # ------------------------------------------------------------------
-    # Public interface
-    # ------------------------------------------------------------------
 
     def generate_all_three(
         self,
@@ -195,44 +146,24 @@ class ModelImageGenerator:
         jewelry_description: str,
         product_image_bytes: bytes | None = None,
     ) -> dict[str, bytes]:
-        """
-        Generates front, side, and closeup model images in sequence.
-
-        The product image (if provided) is sent alongside each prompt so
-        Gemini can see the actual jewelry being worn. Image 6 (front) is
-        then used as the "anchor" for Images 7 and 8 to maximise model
-        consistency across the free tier.
-
-        Saves each image to Supabase Storage at:
-          tasks/{task_id}/model_front.png
-          tasks/{task_id}/model_side.png
-          tasks/{task_id}/model_closeup.png
-
-        Returns:
-            {"front": <bytes>, "side": <bytes>, "closeup": <bytes>}
-
-        Raises:
-            ValueError / RuntimeError on any generation failure.
-        """
         from services.ai_studio import upload_to_storage
 
         desc = jewelry_description.strip() if jewelry_description else FALLBACK_JEWELRY_DESCRIPTION
 
-        # ---- Image 6: front view (anchor) ----
         print(f"[Gemini] Generating model_front for task {task_id}...")
         front_bytes = self.generate_front_view(desc, product_image_bytes)
         _upload(front_bytes, task_id, "front", upload_to_storage)
 
-        # ---- Image 7: side view (reference-conditioned) ----
-        print(f"[Gemini] Sleeping {_FREE_TIER_SLEEP_SECONDS}s to respect free-tier rate limit...")
+        print(f"[Gemini] Sleeping {_FREE_TIER_SLEEP_SECONDS}s (free-tier rate limit)...")
         time.sleep(_FREE_TIER_SLEEP_SECONDS)
+
         print(f"[Gemini] Generating model_side for task {task_id}...")
         side_bytes = self.generate_side_view(desc, front_bytes, product_image_bytes)
         _upload(side_bytes, task_id, "side", upload_to_storage)
 
-        # ---- Image 8: close-up (reference-conditioned) ----
-        print(f"[Gemini] Sleeping {_FREE_TIER_SLEEP_SECONDS}s to respect free-tier rate limit...")
+        print(f"[Gemini] Sleeping {_FREE_TIER_SLEEP_SECONDS}s (free-tier rate limit)...")
         time.sleep(_FREE_TIER_SLEEP_SECONDS)
+
         print(f"[Gemini] Generating model_closeup for task {task_id}...")
         closeup_bytes = self.generate_closeup(desc, front_bytes, product_image_bytes)
         _upload(closeup_bytes, task_id, "closeup", upload_to_storage)
@@ -245,12 +176,6 @@ class ModelImageGenerator:
         jewelry_description: str,
         product_image_bytes: bytes | None = None,
     ) -> bytes:
-        """
-        Generates Image 6 — front-facing model.
-
-        Sends the text prompt (plus optional product image inline) to Gemini.
-        Returns raw PNG bytes. The result becomes the anchor for Images 7/8.
-        """
         parts: list = [get_front_view_prompt(jewelry_description)]
         if product_image_bytes:
             parts.append(_make_part(product_image_bytes))
@@ -262,13 +187,6 @@ class ModelImageGenerator:
         anchor_image_bytes: bytes,
         product_image_bytes: bytes | None = None,
     ) -> bytes:
-        """
-        Generates Image 7 — 45-degree side view.
-
-        Passes the anchor image (Image 6) as an inline reference so Gemini
-        can maintain model consistency. Product image is also attached if
-        available.
-        """
         parts: list = [
             get_side_view_prompt(jewelry_description),
             _make_part(anchor_image_bytes),
@@ -283,11 +201,6 @@ class ModelImageGenerator:
         anchor_image_bytes: bytes,
         product_image_bytes: bytes | None = None,
     ) -> bytes:
-        """
-        Generates Image 8 — extreme close-up framing the jewelry.
-
-        Same reference-conditioning pattern as generate_side_view.
-        """
         parts: list = [
             get_closeup_prompt(jewelry_description),
             _make_part(anchor_image_bytes),
@@ -296,22 +209,7 @@ class ModelImageGenerator:
             parts.append(_make_part(product_image_bytes))
         return self._call_gemini(parts)
 
-    # ------------------------------------------------------------------
-    # Private helpers
-    # ------------------------------------------------------------------
-
     def _call_gemini(self, parts: list) -> bytes:
-        """
-        Makes the actual Gemini API call and extracts the generated image.
-
-        *parts* is a list of text strings and/or types.Part objects.
-
-        Returns raw PNG bytes decoded from the inline_data response.
-
-        Raises:
-            ValueError: if Gemini returns a response with no image part.
-            RuntimeError: if the API call itself raises an exception.
-        """
         try:
             response = self._client.models.generate_content(
                 model=_GEMINI_MODEL,
@@ -323,7 +221,6 @@ class ModelImageGenerator:
         except Exception as exc:
             raise RuntimeError(f"Gemini API call failed: {exc}") from exc
 
-        # Walk through response parts looking for the image
         for candidate in response.candidates:
             for part in candidate.content.parts:
                 if part.inline_data is not None:
@@ -335,56 +232,33 @@ class ModelImageGenerator:
             if response.candidates else "unknown"
         )
         raise ValueError(
-            f"Gemini returned no image. "
-            f"The model may have refused the request or returned text only. "
-            f"Finish reason: {finish_reason}"
+            f"Gemini returned no image. Finish reason: {finish_reason}"
         )
 
 
-# ---------------------------------------------------------------------------
-# Module-level helpers
-# ---------------------------------------------------------------------------
-
 def _make_part(image_bytes: bytes) -> types.Part:
-    """
-    Wraps raw image bytes as a google.genai types.Part (inline blob).
-    Detects PNG vs JPEG from magic bytes; defaults to image/png.
-    """
     if image_bytes[:4] == b"\x89PNG":
         mime = "image/png"
     elif image_bytes[:3] == b"\xff\xd8\xff":
         mime = "image/jpeg"
     else:
         mime = "image/png"
-
     return types.Part.from_bytes(data=image_bytes, mime_type=mime)
 
 
 def _ensure_png(raw_bytes: bytes) -> bytes:
-    """
-    Converts the raw image bytes returned by Gemini to PNG format.
-    If they are already a valid PNG, returns them unchanged.
-    Passes through any format Pillow can open; re-encodes as PNG.
-    """
     if raw_bytes[:4] == b"\x89PNG":
-        return raw_bytes  # already PNG
+        return raw_bytes
     try:
         img = Image.open(io.BytesIO(raw_bytes))
         buf = io.BytesIO()
         img.save(buf, format="PNG")
         return buf.getvalue()
     except Exception:
-        # Return as-is if we cannot parse — caller will handle downstream errors
         return raw_bytes
 
 
-def _upload(
-    image_bytes: bytes,
-    task_id: str,
-    angle: str,
-    upload_fn,
-) -> str:
-    """Uploads a model image to Supabase Storage and returns its public URL."""
+def _upload(image_bytes: bytes, task_id: str, angle: str, upload_fn) -> str:
     storage_path = f"tasks/{task_id}/model_{angle}.png"
     print(f"[Gemini] Uploading {storage_path}...")
     url = upload_fn(image_bytes, storage_path)
